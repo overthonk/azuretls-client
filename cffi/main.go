@@ -79,6 +79,7 @@ type RequestData struct {
 	URL                string            `json:"url"`
 	Body               interface{}       `json:"body,omitempty"`
 	BodyB64            string            `json:"body_b64,omitempty"` // Base64 encoded binary body
+	RespBodyB64        bool              `json:"resp_body_b64,omitempty"`
 	Headers            map[string]string `json:"headers,omitempty"`
 	OrderedHeaders     [][]string        `json:"ordered_headers,omitempty"`
 	Proxy              string            `json:"proxy,omitempty"`
@@ -122,6 +123,10 @@ func cStringToGoString(cs *C.char) string {
 
 // Helper function to create a C response structure
 func createCResponse(resp *azuretls.Response, err error) *C.CFfiResponse {
+	return createCResponseWithEncoding(resp, err, false)
+}
+
+func createCResponseWithEncoding(resp *azuretls.Response, err error, encodeBody bool) *C.CFfiResponse {
 	cResp := (*C.CFfiResponse)(C.malloc(C.sizeof_CFfiResponse))
 	if cResp == nil {
 		return nil
@@ -149,8 +154,12 @@ func createCResponse(resp *azuretls.Response, err error) *C.CFfiResponse {
 	cResp.status_code = C.int(resp.StatusCode)
 
 	if resp.Body != nil {
-		cResp.body = goStringToCString(string(resp.Body))
-		cResp.body_len = C.int(len(resp.Body))
+		bodyStr := string(resp.Body)
+		if encodeBody {
+			bodyStr = base64.StdEncoding.EncodeToString(resp.Body)
+		}
+		cResp.body = goStringToCString(bodyStr)
+		cResp.body_len = C.int(len(bodyStr))
 	}
 
 	if resp.Header != nil {
@@ -332,7 +341,7 @@ func azuretls_session_do(sessionID uintptr, requestJSON *C.char) *C.CFfiResponse
 
 	// Execute request
 	resp, err := session.Do(req)
-	return createCResponse(resp, err)
+	return createCResponseWithEncoding(resp, err, reqData.RespBodyB64)
 }
 
 //export azuretls_session_do_bytes
