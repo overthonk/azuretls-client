@@ -174,7 +174,7 @@ func TestHeaderAndOrderInParamWithRedirect(t *testing.T) {
 		"upgrade-insecure-requests": {"1"},
 	}
 
-	response, err := session.Get("https://jigsaw.w3.org/HTTP/300/302.html", headers, orders)
+	response, err := session.Get("https://httpbin.io/redirect-to?url=http%3A%2F%2Fexample.com%2F", headers, orders)
 
 	if err != nil {
 		t.Fatal(err)
