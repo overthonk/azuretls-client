@@ -10,6 +10,10 @@ on:
         description: 'Version tag (e.g., v1.0.0)'
         required: true
         type: string
+      changelog:
+        description: 'Release notes/changelog'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -60,55 +64,9 @@ jobs:
           
           echo "✅ CFFI build test passed!"
 
-  # Second: Generate changelog
-  generate-changelog:
-    needs: test
-    runs-on: ubuntu-latest
-    outputs:
-      changelog: ${{ steps.changelog.outputs.changelog }}
-      tag: ${{ steps.tag.outputs.tag }}
-      previous_tag: ${{ steps.previous_tag.outputs.tag }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Get current tag
-        id: tag
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Get previous tag
-        id: previous_tag
-        run: |
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | head -2 | tail -1)
-          echo "tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          CURRENT_TAG="${{ steps.tag.outputs.tag }}"
-          PREVIOUS_TAG="${{ steps.previous_tag.outputs.tag }}"
-          
-          chmod +x .github/scripts/generate-changelog.sh
-          bash .github/scripts/generate-changelog.sh "$PREVIOUS_TAG" "$CURRENT_TAG" > changelog.txt
-          
-          # Set multiline output properly
-          {
-            echo 'changelog<<EOF'
-            cat changelog.txt
-            echo EOF
-          } >> $GITHUB_OUTPUT
-
-      - name: Upload changelog artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: changelog
-          path: changelog.txt
-
-  # Third: Build all platforms (only after tests pass)
+  # Second: Build all platforms (only after tests pass)
   build-cffi:
-    needs: [test, generate-changelog]
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -223,7 +181,11 @@ jobs:
       - name: Get version
         id: version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/}
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
         shell: bash
 
@@ -329,9 +291,9 @@ jobs:
             cffi/${{ env.LIB_NAME }}
             cffi/azuretls.h
 
-  # Fourth: Create release (only after all builds succeed)
+  # Third: Create release (only after all builds succeed)
   create-release:
-    needs: [generate-changelog, build-cffi]
+    needs: build-cffi
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -345,7 +307,11 @@ jobs:
       - name: Get version
         id: version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/}
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Prepare release assets
@@ -384,7 +350,7 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}
-          body: ${{ needs.generate-changelog.outputs.changelog }}
+          body: ${{ inputs.changelog || 'Release' }}
           draft: true
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           files: release-assets/*
