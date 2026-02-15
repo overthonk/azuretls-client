@@ -80,6 +80,7 @@ type RequestData struct {
 	Body               interface{}       `json:"body,omitempty"`
 	BodyB64            string            `json:"body_b64,omitempty"` // Base64 encoded binary body
 	RespBodyB64        bool              `json:"resp_body_b64,omitempty"`
+	RespHeadersB64     bool              `json:"resp_headers_b64,omitempty"`
 	Headers            map[string]string `json:"headers,omitempty"`
 	OrderedHeaders     [][]string        `json:"ordered_headers,omitempty"`
 	Proxy              string            `json:"proxy,omitempty"`
@@ -123,10 +124,10 @@ func cStringToGoString(cs *C.char) string {
 
 // Helper function to create a C response structure
 func createCResponse(resp *azuretls.Response, err error) *C.CFfiResponse {
-	return createCResponseWithEncoding(resp, err, false)
+	return createCResponseWithEncoding(resp, err, false, false)
 }
 
-func createCResponseWithEncoding(resp *azuretls.Response, err error, encodeBody bool) *C.CFfiResponse {
+func createCResponseWithEncoding(resp *azuretls.Response, err error, encodeBody bool, encodeHeaders bool) *C.CFfiResponse {
 	cResp := (*C.CFfiResponse)(C.malloc(C.sizeof_CFfiResponse))
 	if cResp == nil {
 		return nil
@@ -164,7 +165,11 @@ func createCResponseWithEncoding(resp *azuretls.Response, err error, encodeBody 
 
 	if resp.Header != nil {
 		headerBytes, _ := json.Marshal(resp.Header)
-		cResp.headers = goStringToCString(string(headerBytes))
+		headersStr := string(headerBytes)
+		if encodeHeaders {
+			headersStr = base64.StdEncoding.EncodeToString(headerBytes)
+		}
+		cResp.headers = goStringToCString(headersStr)
 	}
 
 	cResp.url = goStringToCString(resp.Url)
@@ -341,7 +346,7 @@ func azuretls_session_do(sessionID uintptr, requestJSON *C.char) *C.CFfiResponse
 
 	// Execute request
 	resp, err := session.Do(req)
-	return createCResponseWithEncoding(resp, err, reqData.RespBodyB64)
+	return createCResponseWithEncoding(resp, err, reqData.RespBodyB64, reqData.RespHeadersB64)
 }
 
 //export azuretls_session_do_bytes
