@@ -346,6 +346,9 @@ func azuretls_session_do(sessionID uintptr, requestJSON *C.char) *C.CFfiResponse
 
 	// Execute request
 	resp, err := session.Do(req)
+	if resp != nil {
+		defer resp.CloseBody()
+	}
 	return createCResponseWithEncoding(resp, err, reqData.RespBodyB64, reqData.RespHeadersB64)
 }
 
@@ -390,6 +393,9 @@ func azuretls_session_do_bytes(sessionID uintptr, method *C.char, url *C.char, h
 
 	// Execute request
 	resp, err := session.Do(req)
+	if resp != nil {
+		defer resp.CloseBody()
+	}
 	return createCResponse(resp, err)
 }
 
